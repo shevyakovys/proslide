@@ -3,7 +3,7 @@ export const checkedText = (v, max, label = 'Текст') => {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max) fail(400, `${label}: от 1 до ${max} символов`);
   return v.trim();
 };
-const types = ['content', 'single', 'multiple', 'wordcloud', 'text', 'scale'];
+const types = ['qr', 'content', 'single', 'multiple', 'wordcloud', 'text', 'scale'];
 
 export function validateTextStyle(value) {
   if (value === undefined || value === null) return undefined;
