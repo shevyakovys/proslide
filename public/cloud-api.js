@@ -19,9 +19,14 @@ export async function cloudApi(path, method = 'GET', body) {
   });
   const result = await res.json();
   if (!res.ok) throw new Error(result.error || 'Не удалось связаться с сервером');
-  if (result.authorToken) { creds.author = result.authorToken; delete result.authorToken; }
-  if (result.participantToken) { creds.participant = result.participantToken; delete result.participantToken; }
-  if (path === '/logout') delete creds.author;
-  localStorage.setItem(storageKey, JSON.stringify(creds));
+  // Polling in another tab must never overwrite a newer login/logout. Merge
+  // newly issued tokens into the latest stored credentials only when necessary.
+  if (result.authorToken || result.participantToken || path === '/logout') {
+    const latest = credentials();
+    if (result.authorToken) { latest.author = result.authorToken; delete result.authorToken; }
+    if (result.participantToken) { latest.participant = result.participantToken; delete result.participantToken; }
+    if (path === '/logout' && latest.author === creds.author) delete latest.author;
+    localStorage.setItem(storageKey, JSON.stringify(latest));
+  }
   return result;
 }
