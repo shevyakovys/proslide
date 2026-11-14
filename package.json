@@ -1,0 +1,9 @@
+{
+  "name": "proslide",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Интерактивные презентации с QR-входом и облаком слов",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": { "start": "node server.js", "dev": "node --watch server.js", "test": "node --test" }
+}
