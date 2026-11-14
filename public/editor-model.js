@@ -3,12 +3,12 @@ export function normalizeTextStyle(value = {}) {
   const style = value && typeof value === 'object' ? value : {};
   const size = (v, fallback, min, max) => Number.isFinite(Number(v)) && v !== null && v !== '' ? Math.round(Math.min(max, Math.max(min, Number(v)))) : fallback;
   const color = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : null;
-  return { titleSize: size(style.titleSize, 44, 24, 96), bodySize: size(style.bodySize, 20, 12, 48), titleColor: color(style.titleColor), bodyColor: color(style.bodyColor) };
+  return { titleSize: size(style.titleSize, 44, 24, 96), bodySize: size(style.bodySize, 20, 12, 48), titleColor: color(style.titleColor), bodyColor: color(style.bodyColor), textAlign: ['left','center','right'].includes(style.textAlign) ? style.textAlign : 'left', verticalAlign: ['top','middle','bottom'].includes(style.verticalAlign) ? style.verticalAlign : 'top' };
 }
 export function slideStyle(slide) {
   if (!slide.textStyle) return '';
   const s = normalizeTextStyle(slide.textStyle);
-  return `--title-size:${s.titleSize}px;--body-size:${s.bodySize}px;${s.titleColor ? `--title-color:${s.titleColor};` : ''}${s.bodyColor ? `--body-color:${s.bodyColor};` : ''}`;
+  return `--title-size:${s.titleSize}px;--body-size:${s.bodySize}px;--text-align:${s.textAlign};--text-position:${{top:'flex-start',middle:'center',bottom:'flex-end'}[s.verticalAlign]};${s.verticalAlign !== 'top' ? '--text-area-height:clamp(180px,24vh,320px);' : ''}${s.titleColor ? `--title-color:${s.titleColor};` : ''}${s.bodyColor ? `--body-color:${s.bodyColor};` : ''}`;
 }
 export function moveSlide(slides, from, to) {
   if (!Number.isInteger(from) || !Number.isInteger(to) || from < 0 || to < 0 || from >= slides.length || to >= slides.length) return slides.slice();

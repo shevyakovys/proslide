@@ -18,6 +18,12 @@ export function validateTextStyle(value) {
     if (value[key] !== undefined && value[key] !== null && (typeof value[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(value[key]))) fail(400, 'Некорректный цвет текста');
     output[key] = value[key]?.toLowerCase() || null;
   }
+  for (const [key, allowed] of [['textAlign',['left','center','right']],['verticalAlign',['top','middle','bottom']]]) {
+    if (value[key] !== undefined) {
+      if (!allowed.includes(value[key])) fail(400, 'Некорректное расположение текста');
+      output[key] = value[key];
+    }
+  }
   return output;
 }
 
