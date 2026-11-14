@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: node --check public/app.js && node --check public/cloud-api.js && node --test test/app.test.js test/cloud-client.test.js
+      - run: node --check public/app.js && node --check public/cloud-api.js && node --test test/app.test.js test/cloud-client.test.js test/editor.test.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
         with:

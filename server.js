@@ -14,6 +14,23 @@ const text = (v, max, label = 'Текст') => {
   return v.trim();
 };
 const types = ['content', 'single', 'multiple', 'wordcloud', 'text', 'scale'];
+
+export function validateTextStyle(value) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) fail(400, 'Некорректное оформление текста');
+  const output = {};
+  for (const [key, fallback, min, max] of [['titleSize',44,24,96],['bodySize',20,12,48]]) {
+    const n = value[key] ?? fallback;
+    if (!Number.isInteger(n) || n < min || n > max) fail(400, 'Размер текста вне допустимого диапазона');
+    output[key] = n;
+  }
+  for (const key of ['titleColor','bodyColor']) {
+    if (value[key] !== undefined && value[key] !== null && (typeof value[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(value[key]))) fail(400, 'Некорректный цвет текста');
+    output[key] = value[key]?.toLowerCase() || null;
+  }
+  return output;
+}
+
 export function validateDeck(input) {
   const title = text(input.title, 120, 'Название');
   if (!Array.isArray(input.slides) || input.slides.length < 1 || input.slides.length > 100) fail(400, 'Нужно от 1 до 100 слайдов');
@@ -25,7 +42,8 @@ export function validateDeck(input) {
     ids.add(id);
     const options = ['single', 'multiple'].includes(s.type) ? s.options : [];
     if (!Array.isArray(options) || (['single', 'multiple'].includes(s.type) && (options.length < 2 || options.length > 8))) fail(400, 'Добавьте от 2 до 8 вариантов');
-    return { id, type: s.type, title: text(s.title, 240, 'Заголовок слайда'), body: typeof s.body === 'string' ? s.body.slice(0, 2000) : '', options: options.map(o => text(o, 160)), maxWords: Math.min(5, Math.max(1, Number(s.maxWords) || 3)) };
+    const textStyle = validateTextStyle(s.textStyle);
+    return { ...(textStyle ? {textStyle} : {}), id, type: s.type, title: text(s.title, 240, 'Заголовок слайда'), body: typeof s.body === 'string' ? s.body.slice(0, 2000) : '', options: options.map(o => text(o, 160)), maxWords: Math.min(5, Math.max(1, Number(s.maxWords) || 3)) };
   });
   return { title, slides, theme: ['violet', 'ocean', 'forest'].includes(input.theme) ? input.theme : 'violet' };
 }
@@ -184,7 +202,7 @@ export function createApp({ dbPath = process.env.DB_PATH || resolve(root, 'data/
       }
       if (path.startsWith('/api/')) fail(404, 'Неизвестный API-запрос');
       if (method !== 'GET' && method !== 'HEAD') fail(405, 'Метод не поддерживается');
-      const files = { '/cloud-config.js': ['cloud-config.js', 'text/javascript'], '/cloud-api.js': ['cloud-api.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'], '/vendor/qrcode.js': ['vendor/qrcode.js', 'text/javascript'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+      const files = { '/editor-model.js': ['editor-model.js', 'text/javascript'], '/cloud-config.js': ['cloud-config.js', 'text/javascript'], '/cloud-api.js': ['cloud-api.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'], '/vendor/qrcode.js': ['vendor/qrcode.js', 'text/javascript'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
       const [file, type] = files[path] || ['index.html', 'text/html'];
       res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-cache' }); res.end(method === 'HEAD' ? undefined : readFileSync(resolve(root, 'public', file)));
     } catch (e) { if (!e.status) console.error(e); json({ error: e.status ? e.message : 'Ошибка сервера' }, e.status || 500); }

@@ -4,6 +4,23 @@ export const checkedText = (v, max, label = 'Текст') => {
   return v.trim();
 };
 const types = ['content', 'single', 'multiple', 'wordcloud', 'text', 'scale'];
+
+export function validateTextStyle(value) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'object' || Array.isArray(value)) fail(400, 'Некорректное оформление текста');
+  const output = {};
+  for (const [key, fallback, min, max] of [['titleSize',44,24,96],['bodySize',20,12,48]]) {
+    const n = value[key] ?? fallback;
+    if (!Number.isInteger(n) || n < min || n > max) fail(400, 'Размер текста вне допустимого диапазона');
+    output[key] = n;
+  }
+  for (const key of ['titleColor','bodyColor']) {
+    if (value[key] !== undefined && value[key] !== null && (typeof value[key] !== 'string' || !/^#[0-9a-f]{6}$/i.test(value[key]))) fail(400, 'Некорректный цвет текста');
+    output[key] = value[key]?.toLowerCase() || null;
+  }
+  return output;
+}
+
 export function validateDeck(input) {
   const title = checkedText(input.title, 120, 'Название');
   if (!Array.isArray(input.slides) || input.slides.length < 1 || input.slides.length > 100) fail(400, 'Нужно от 1 до 100 слайдов');
@@ -15,7 +32,8 @@ export function validateDeck(input) {
     ids.add(id);
     const options = ['single', 'multiple'].includes(s.type) ? s.options : [];
     if (!Array.isArray(options) || (['single', 'multiple'].includes(s.type) && (options.length < 2 || options.length > 8))) fail(400, 'Добавьте от 2 до 8 вариантов');
-    return { id, type: s.type, title: checkedText(s.title, 240, 'Заголовок слайда'), body: typeof s.body === 'string' ? s.body.slice(0, 2000) : '', options: options.map(o => checkedText(o, 160)), maxWords: Math.min(5, Math.max(1, Number(s.maxWords) || 3)) };
+    const textStyle = validateTextStyle(s.textStyle);
+    return { ...(textStyle ? {textStyle} : {}), id, type: s.type, title: checkedText(s.title, 240, 'Заголовок слайда'), body: typeof s.body === 'string' ? s.body.slice(0, 2000) : '', options: options.map(o => checkedText(o, 160)), maxWords: Math.min(5, Math.max(1, Number(s.maxWords) || 3)) };
   });
   return { title, slides, theme: ['violet', 'ocean', 'forest'].includes(input.theme) ? input.theme : 'violet' };
 }
