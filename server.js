@@ -184,7 +184,7 @@ export function createApp({ dbPath = process.env.DB_PATH || resolve(root, 'data/
       }
       if (path.startsWith('/api/')) fail(404, 'Неизвестный API-запрос');
       if (method !== 'GET' && method !== 'HEAD') fail(405, 'Метод не поддерживается');
-      const files = { '/app.js': ['app.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'], '/vendor/qrcode.js': ['vendor/qrcode.js', 'text/javascript'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+      const files = { '/cloud-config.js': ['cloud-config.js', 'text/javascript'], '/cloud-api.js': ['cloud-api.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'], '/vendor/qrcode.js': ['vendor/qrcode.js', 'text/javascript'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
       const [file, type] = files[path] || ['index.html', 'text/html'];
       res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-cache' }); res.end(method === 'HEAD' ? undefined : readFileSync(resolve(root, 'public', file)));
     } catch (e) { if (!e.status) console.error(e); json({ error: e.status ? e.message : 'Ошибка сервера' }, e.status || 500); }

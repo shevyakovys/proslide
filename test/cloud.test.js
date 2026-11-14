@@ -1,0 +1,75 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+const enabled = process.env.PROSLIDE_CLOUD_TEST === '1';
+const url = 'https://roawbroscoxrptrnhkxb.supabase.co/functions/v1/proslide-api';
+const apikey = 'sb_publishable_qwOw2WkbB-mf16dwCv03VA_8mQCq1re';
+function client() {
+  let author='', participant='';
+  return async (path, method='GET', body, extra={}) => {
+    const res = await fetch(url+path,{method,headers:{apikey,'Content-Type':'application/json',...(author?{'X-Author-Token':author}:{}),...(participant?{'X-Participant-Token':participant}:{}),...extra},body:body===undefined?undefined:JSON.stringify(body)});
+    const data=await res.json(); if(data.authorToken)author=data.authorToken; if(data.participantToken)participant=data.participantToken;
+    return {status:res.status,body:data};
+  };
+}
+test('Hosted Supabase: accounts, ownership, rooms, answers, export and direct-table isolation', {skip:!enabled,timeout:180000}, async()=>{
+ const owner=client(), other=client(), phone=client(), second=client(), stranger=client();
+ const suffix=Date.now(), email=`proslide-qa-${suffix}@example.invalid`, password=`qa-${crypto.randomUUID()}`;
+ const peerEmail=`proslide-peer-${suffix}@example.invalid`;
+ writeFileSync('test-results/cloud-test-users.json', JSON.stringify({email,peerEmail,password}));
+ assert.equal((await owner('/health')).status,200);
+ const signup=await owner('/register','POST',{name:'Проверка ProSlide',email,password});
+ assert.equal(signup.status,200,JSON.stringify(signup.body));
+ assert.equal((await other('/register','POST',{name:'Другой автор',email:peerEmail,password})).status,200);
+ const slides=['single','multiple','wordcloud','text','scale','content'].map(type=>({id:type,type,title:`Проверка ${type}`,body:'',options:['Первый','Второй','Третий'],maxWords:3}));
+ const created=await owner('/decks','POST',{title:'Проверка облачной версии',theme:'violet',slides});
+ assert.equal(created.status,201,JSON.stringify(created.body)); const id=created.body.id;
+ assert.equal((await stranger('/decks')).status,401);
+ assert.equal((await other(`/decks/${id}`)).status,404);
+ const started=await owner(`/decks/${id}/start`,'POST'); assert.equal(started.status,201,JSON.stringify(started.body)); const {code}=started.body;
+ assert.equal((await stranger(`/rooms/${code}/host`)).status,401);
+ assert.equal((await other(`/rooms/${code}/host`)).status,403);
+ assert.equal((await phone(`/rooms/${code}/join`,'POST')).status,200);
+ assert.equal((await phone(`/rooms/${code}/join`,'POST')).body.participants,1);
+ await second(`/rooms/${code}/join`,'POST');
+ const vote=(c,slideId,value)=>c(`/rooms/${code}/answer`,'POST',{slideId,value});
+ const control=body=>owner(`/rooms/${code}/host`,'PATCH',body);
+ assert.equal((await vote(phone,'single',[0,1])).status,400);
+ const simultaneous=await Promise.all([vote(phone,'single',[0]),vote(phone,'single',[1])]);
+ assert.deepEqual(simultaneous.map(r=>r.status).sort(),[201,409]);
+ await vote(second,'single',[2]);
+ assert.equal((await owner(`/rooms/${code}/host`)).body.results.total,2);
+ await control({showResults:false}); assert.equal((await phone(`/rooms/${code}`)).body.results,null);
+ await control({index:1,accepting:false}); assert.equal((await vote(phone,'multiple',[0,1])).status,409);
+ await control({accepting:true}); assert.equal((await vote(phone,'single',[1])).status,409);
+ assert.equal((await vote(phone,'multiple',[0,2])).status,201);
+ await control({index:2,showResults:true});
+ assert.equal((await vote(phone,'wordcloud',['Команда','идеи','команда'])).status,201);
+ await vote(second,'wordcloud',['КОМАНДА']);
+ assert.deepEqual((await owner(`/rooms/${code}/host`)).body.results.words,[{word:'команда',count:2},{word:'идеи',count:1}]);
+ await control({index:3}); assert.equal((await vote(phone,'text','Спасибо за встречу!')).status,201);
+ await control({index:4}); assert.equal((await vote(phone,'scale',6)).status,400);
+ await vote(phone,'scale',4); await vote(second,'scale',5);
+ assert.equal((await owner(`/rooms/${code}/host`)).body.results.average,4.5);
+ await control({index:5}); assert.equal((await vote(phone,'content','x')).status,400);
+ assert.equal((await control({index:100})).status,400);
+ assert.equal((await owner(`/rooms/${code}/export`)).body.slides.length,6);
+ assert.equal((await other(`/rooms/${code}/export`)).status,403);
+ await owner(`/decks/${id}`,'PUT',{title:'Изменено',theme:'forest',slides:slides.slice(0,1)});
+ assert.equal((await owner(`/rooms/${code}/host`)).body.slideCount,6);
+ await control({status:'ended'}); assert.equal((await control({status:'live'})).status,409);
+ assert.equal((await phone(`/rooms/${code}/join`,'POST')).body.status,'ended');
+ assert.equal((await stranger(`/rooms/${code}/join`,'POST')).status,409);
+ const cross=await owner('/decks','POST',{}, {Origin:'https://evil.example'}); assert.equal(cross.status,403);
+ const allowed=await fetch(url+'/health',{headers:{apikey,Origin:'https://shevyakovys.github.io'}}); assert.equal(allowed.headers.get('access-control-allow-origin'),'https://shevyakovys.github.io');
+ for(const table of ['users','auth','rooms','answers','participants','decks']) {
+   const direct=await fetch(`https://roawbroscoxrptrnhkxb.supabase.co/rest/v1/proslide_${table}?select=*`,{headers:{apikey}});
+   assert.ok([401,403].includes(direct.status),`${table}: ${direct.status}`);
+ }
+ const directRpc=await fetch('https://roawbroscoxrptrnhkxb.supabase.co/rest/v1/rpc/proslide_rate',{method:'POST',headers:{apikey,'Content-Type':'application/json'},body:JSON.stringify({p_bucket:'attack',p_limit:1,p_seconds:1})});
+ assert.ok([401,403,404].includes(directRpc.status));
+ await owner('/logout','POST'); assert.equal((await owner('/me')).status,401);
+ assert.equal((await owner('/login','POST',{email,password})).status,200);
+ assert.equal((await owner('/decks')).body.length,1);
+ console.log(`Hosted integration checks passed; test accounts: ${email}, ${peerEmail}`);
+});

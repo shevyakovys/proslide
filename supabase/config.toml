@@ -1,0 +1,5 @@
+project_id = "proslide"
+
+[functions.proslide-api]
+# Custom author and participant tokens are checked by the function itself.
+verify_jwt = false
