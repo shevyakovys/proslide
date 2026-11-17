@@ -151,7 +151,7 @@ Deno.serve(async req => {
       if (['host', 'export'].includes(m[2])) {
         const u = await author(req); if (u.id !== r.owner) fail(403, 'Доступ только автору');
         if (m[2] === 'export' && method === 'GET') {
-          const slides = await Promise.all(r.snapshot.slides.map(async s => ({ ...s, results: summarize(s, await answers(r.code, s.id)) })));
+          const slides = await Promise.all(r.snapshot.slides.map(async s => ({ ...s, results: summarize(s, await answers(r.code, s.id), true) })));
           return json({ title: r.snapshot.title, code: r.code, created: r.created, slides });
         }
         if (m[2] === 'host' && method === 'PATCH') {

@@ -1,9 +1,10 @@
+import { validateFields, validateFormAnswer, summarizeForm } from './form.js';
 export const fail = (status, message) => { throw Object.assign(new Error(message), { status }); };
 export const checkedText = (v, max, label = 'Текст') => {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max) fail(400, `${label}: от 1 до ${max} символов`);
   return v.trim();
 };
-const types = ['qr', 'content', 'single', 'multiple', 'wordcloud', 'text', 'scale'];
+const types = ['form', 'qr', 'content', 'single', 'multiple', 'wordcloud', 'text', 'scale'];
 
 export function validateTextStyle(value) {
   if (value === undefined || value === null) return undefined;
@@ -39,12 +40,13 @@ export function validateDeck(input) {
     const options = ['single', 'multiple'].includes(s.type) ? s.options : [];
     if (!Array.isArray(options) || (['single', 'multiple'].includes(s.type) && (options.length < 2 || options.length > 8))) fail(400, 'Добавьте от 2 до 8 вариантов');
     const textStyle = validateTextStyle(s.textStyle);
-    return { ...(textStyle ? {textStyle} : {}), id, type: s.type, title: checkedText(s.title, 240, 'Заголовок слайда'), body: typeof s.body === 'string' ? s.body.slice(0, 2000) : '', options: options.map(o => checkedText(o, 160)), maxWords: Math.min(5, Math.max(1, Number(s.maxWords) || 3)) };
+    return { ...(textStyle ? {textStyle} : {}), ...(s.type === 'form' ? {fields: validateFields(s.fields)} : {}), id, type: s.type, title: checkedText(s.title, 240, 'Заголовок слайда'), body: typeof s.body === 'string' ? s.body.slice(0, 2000) : '', options: options.map(o => checkedText(o, 160)), maxWords: Math.min(5, Math.max(1, Number(s.maxWords) || 3)) };
   });
   return { title, slides, theme: ['violet', 'ocean', 'forest'].includes(input.theme) ? input.theme : 'violet' };
 }
 
 export function validateAnswer(s, value) {
+  if (s.type === 'form') return validateFormAnswer(s, value);
   if (['single', 'multiple'].includes(s.type)) {
     if (!Array.isArray(value) || !value.length || value.length > s.options.length || (s.type === 'single' && value.length !== 1) || new Set(value).size !== value.length || value.some(v => !Number.isInteger(v) || v < 0 || v >= s.options.length)) fail(400, 'Выберите корректный вариант ответа');
   } else if (s.type === 'wordcloud') {
@@ -55,7 +57,8 @@ export function validateAnswer(s, value) {
   else fail(400, 'Этот слайд не принимает ответы');
   return value;
 }
-export function summarize(s, answers) {
+export function summarize(s, answers, includeResponses = false) {
+  if (s.type === 'form') return summarizeForm(answers, includeResponses);
   const counts = s.options.map((label, i) => ({ label, count: answers.filter(a => a.includes(i)).length }));
   const words = new Map();
   if (s.type === 'wordcloud') for (const a of answers) for (const word of a) words.set(word, (words.get(word) || 0) + 1);

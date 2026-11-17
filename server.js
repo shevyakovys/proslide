@@ -1,3 +1,4 @@
+import { validateFields, validateFormAnswer, summarizeForm } from './supabase/functions/proslide-api/form.js';
 import http from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, randomUUID, randomInt, scrypt, timingSafeEqual } from 'node:crypto';
@@ -13,7 +14,7 @@ const text = (v, max, label = 'Текст') => {
   if (typeof v !== 'string' || !v.trim() || v.trim().length > max) fail(400, `${label}: от 1 до ${max} символов`);
   return v.trim();
 };
-const types = ['qr', 'content', 'single', 'multiple', 'wordcloud', 'text', 'scale'];
+const types = ['form', 'qr', 'content', 'single', 'multiple', 'wordcloud', 'text', 'scale'];
 
 export function validateTextStyle(value) {
   if (value === undefined || value === null) return undefined;
@@ -49,7 +50,7 @@ export function validateDeck(input) {
     const options = ['single', 'multiple'].includes(s.type) ? s.options : [];
     if (!Array.isArray(options) || (['single', 'multiple'].includes(s.type) && (options.length < 2 || options.length > 8))) fail(400, 'Добавьте от 2 до 8 вариантов');
     const textStyle = validateTextStyle(s.textStyle);
-    return { ...(textStyle ? {textStyle} : {}), id, type: s.type, title: text(s.title, 240, 'Заголовок слайда'), body: typeof s.body === 'string' ? s.body.slice(0, 2000) : '', options: options.map(o => text(o, 160)), maxWords: Math.min(5, Math.max(1, Number(s.maxWords) || 3)) };
+    return { ...(textStyle ? {textStyle} : {}), ...(s.type === 'form' ? {fields: validateFields(s.fields)} : {}), id, type: s.type, title: text(s.title, 240, 'Заголовок слайда'), body: typeof s.body === 'string' ? s.body.slice(0, 2000) : '', options: options.map(o => text(o, 160)), maxWords: Math.min(5, Math.max(1, Number(s.maxWords) || 3)) };
   });
   return { title, slides, theme: ['violet', 'ocean', 'forest'].includes(input.theme) ? input.theme : 'violet' };
 }
@@ -87,8 +88,9 @@ export function createApp({ dbPath = process.env.DB_PATH || resolve(root, 'data/
   const cookie = (res, key, value, age = 2592000) => res.setHeader('Set-Cookie', `${key}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${age}${publicUrl.startsWith('https:') ? '; Secure' : ''}`);
   const deck = (id, owner) => { const d = get('SELECT * FROM decks WHERE id=? AND owner=?', id, owner); if (!d) fail(404, 'Презентация не найдена'); return { id: d.id, ...JSON.parse(d.data), updated: d.updated }; };
   const room = code => { const r = get('SELECT * FROM rooms WHERE code=?', code); if (!r) fail(404, 'Сессия не найдена. Проверьте код.'); return r; };
-  function results(r, s) {
+  function results(r, s, includeResponses = false) {
     const answers = all('SELECT value FROM answers WHERE room=? AND slide_id=?', r.code, s.id).map(a => JSON.parse(a.value));
+    if (s.type === 'form') return summarizeForm(answers, includeResponses);
     const counts = s.options.map((label, i) => ({ label, count: answers.filter(a => a.includes(i)).length }));
     const words = new Map();
     if (s.type === 'wordcloud') for (const a of answers) for (const word of a) words.set(word, (words.get(word) || 0) + 1);
@@ -172,7 +174,7 @@ export function createApp({ dbPath = process.env.DB_PATH || resolve(root, 'data/
           if (user(req).id !== r.owner) fail(403, 'Доступ только автору');
           if (m[2] === 'export' && method === 'GET') {
             const d = JSON.parse(r.snapshot);
-            return json({ title: d.title, code: r.code, created: r.created, slides: d.slides.map(s => ({ ...s, results: results(r, s) })) });
+            return json({ title: d.title, code: r.code, created: r.created, slides: d.slides.map(s => ({ ...s, results: results(r, s, true) })) });
           }
           if (method === 'PATCH') {
             const b = await body(req), count = JSON.parse(r.snapshot).slides.length;
@@ -193,7 +195,8 @@ export function createApp({ dbPath = process.env.DB_PATH || resolve(root, 'data/
           const b = await body(req), s = JSON.parse(r.snapshot).slides[r.slide];
           if (b.slideId !== s.id) fail(409, 'Ведущий уже переключил слайд');
           let value = b.value;
-          if (['single', 'multiple'].includes(s.type)) {
+          if (s.type === 'form') value = validateFormAnswer(s, value);
+          else if (['single', 'multiple'].includes(s.type)) {
             if (!Array.isArray(value) || !value.length || value.length > s.options.length || (s.type === 'single' && value.length !== 1) || new Set(value).size !== value.length || value.some(v => !Number.isInteger(v) || v < 0 || v >= s.options.length)) fail(400, 'Выберите корректный вариант ответа');
           } else if (s.type === 'wordcloud') {
             if (!Array.isArray(value) || !value.length || value.length > s.maxWords) fail(400, `Введите от 1 до ${s.maxWords} слов`);
@@ -208,7 +211,7 @@ export function createApp({ dbPath = process.env.DB_PATH || resolve(root, 'data/
       }
       if (path.startsWith('/api/')) fail(404, 'Неизвестный API-запрос');
       if (method !== 'GET' && method !== 'HEAD') fail(405, 'Метод не поддерживается');
-      const files = { '/editor-model.js': ['editor-model.js', 'text/javascript'], '/cloud-config.js': ['cloud-config.js', 'text/javascript'], '/cloud-api.js': ['cloud-api.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'], '/vendor/qrcode.js': ['vendor/qrcode.js', 'text/javascript'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+      const files = { '/form-editor.js': ['form-editor.js', 'text/javascript'], '/editor-model.js': ['editor-model.js', 'text/javascript'], '/cloud-config.js': ['cloud-config.js', 'text/javascript'], '/cloud-api.js': ['cloud-api.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/styles.css': ['styles.css', 'text/css'], '/vendor/qrcode.js': ['vendor/qrcode.js', 'text/javascript'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
       const [file, type] = files[path] || ['index.html', 'text/html'];
       res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8`, 'Cache-Control': 'no-cache' }); res.end(method === 'HEAD' ? undefined : readFileSync(resolve(root, 'public', file)));
     } catch (e) { if (!e.status) console.error(e); json({ error: e.status ? e.message : 'Ошибка сервера' }, e.status || 500); }
